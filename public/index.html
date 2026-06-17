@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Factory Control Panel</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.0.0/mqtt.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; }
+    .log { font-family: monospace; font-size: 0.85rem; }
+  </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+
+<div class="max-w-2xl mx-auto p-4">
+  <h1 class="text-3xl font-bold text-center mb-2">🏭 Factory Control</h1>
+  <p class="text-center text-green-400 mb-6">Digital Twin Remote Control</p>
+
+  <!-- Status Koneksi -->
+  <div id="status" class="text-center py-2 rounded-lg mb-6 bg-gray-800">
+    🔴 Menghubungkan...
+  </div>
+
+  <!-- Kontrol Panel -->
+  <div class="grid grid-cols-1 gap-6">
+
+    <!-- Conveyor -->
+    <div class="bg-gray-800 rounded-2xl p-6">
+      <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">🏭 Conveyor</h2>
+      <div class="flex gap-3">
+        <button onclick="sendCommand('conveyor', 'start')" class="flex-1 bg-green-600 hover:bg-green-700 py-4 rounded-xl font-medium">START</button>
+        <button onclick="sendCommand('conveyor', 'stop')" class="flex-1 bg-red-600 hover:bg-red-700 py-4 rounded-xl font-medium">STOP</button>
+      </div>
+      <div class="mt-4">
+        <label class="block text-sm mb-1">Speed: <span id="speedValue1" class="font-mono">1.5</span></label>
+        <input type="range" min="0.5" max="3" step="0.1" value="1.5" id="speed1" class="w-full accent-green-500">
+      </div>
+    </div>
+
+    <!-- Press -->
+    <div class="bg-gray-800 rounded-2xl p-6">
+      <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">🔨 Press / Stamping</h2>
+      <div class="flex gap-3">
+        <button onclick="sendCommand('press', 'start')" class="flex-1 bg-green-600 hover:bg-green-700 py-4 rounded-xl font-medium">START</button>
+        <button onclick="sendCommand('press', 'stop')" class="flex-1 bg-red-600 hover:bg-red-700 py-4 rounded-xl font-medium">STOP</button>
+      </div>
+      <div class="mt-4">
+        <label class="block text-sm mb-1">Speed: <span id="speedValue2" class="font-mono">0.8</span></label>
+        <input type="range" min="0.5" max="2" step="0.1" value="0.8" id="speed2" class="w-full accent-orange-500">
+      </div>
+    </div>
+
+    <!-- Light -->
+    <div class="bg-gray-800 rounded-2xl p-6">
+      <h2 class="text-xl font-semibold mb-4">💡 Light Indicator</h2>
+      <div class="grid grid-cols-3 gap-3">
+        <button onclick="sendLight('on', 'normal')" class="py-4 bg-blue-600 rounded-xl">Normal</button>
+        <button onclick="sendLight('on', 'warning')" class="py-4 bg-yellow-600 rounded-xl">Warning</button>
+        <button onclick="sendCommand('light', 'off')" class="py-4 bg-red-600 rounded-xl">OFF</button>
+      </div>
+    </div>
+
+    <!-- Switch 1 -->
+    <div class="bg-gray-800 rounded-2xl p-6">
+      <h2 class="text-xl font-semibold mb-4">🔄 Main Switch</h2>
+      <button onclick="toggleSwitch()" id="switchBtn" class="w-full py-6 text-xl font-bold rounded-2xl bg-purple-600 hover:bg-purple-700 transition">
+        TOGGLE SWITCH 1
+      </button>
+    </div>
+
+  </div>
+
+  <!-- Log -->
+  <div class="mt-8">
+    <h3 class="text-lg font-semibold mb-2">📜 MQTT Log</h3>
+    <div id="log" class="log bg-black/50 h-64 overflow-y-auto p-4 rounded-xl text-green-400 text-sm"></div>
+  </div>
+</div>
+
+<script>
+// MQTT Configuration
+const broker = 'ws://broker.emqx.io:8083/mqtt';
+let client;
+
+function connectMQTT() {
+  client = mqtt.connect(broker);
+
+  client.on('connect', () => {
+    document.getElementById('status').innerHTML = '🟢 Terhubung ke Broker';
+    document.getElementById('status').classList.add('bg-green-900');
+    
+    client.subscribe('factory/machine/cmd', (err) => {
+      if (!err) addLog('✅ Subscribe ke factory/machine/cmd berhasil');
+    });
+  });
+
+  client.on('message', (topic, message) => {
+    addLog(`📥 [${topic}] ${message.toString()}`);
+  });
+
+  client.on('error', (err) => {
+    addLog(`❌ Error: ${err.message}`);
+  });
+}
+
+// Send Command
+function sendCommand(object, command) {
+  const speed = object === 'conveyor' ? document.getElementById('speed1').value :
+                object === 'press' ? document.getElementById('speed2').value : null;
+
+  const payload = { object, command };
+  if (speed) payload.speed = parseFloat(speed);
+
+  const topic = `factory/${object}/cmd`;
+  
+  client.publish(topic, JSON.stringify(payload));
+  addLog(`📤 Publish → ${topic} | ${JSON.stringify(payload)}`);
+}
+
+// Light Command
+function sendLight(command, mode = null) {
+  const payload = { object: "light", command };
+  if (mode) payload.mode = mode;
+  
+  client.publish('factory/light/cmd', JSON.stringify(payload));
+  addLog(`💡 Light ${command} ${mode ? `(${mode})` : ''}`);
+}
+
+function toggleSwitch() {
+  const payload = { object: "switch1", command: "toggle" };
+  client.publish('factory/switch1/cmd', JSON.stringify(payload));
+  addLog(`🔄 Switch 1 Toggled`);
+}
+
+function addLog(text) {
+  const logEl = document.getElementById('log');
+  const time = new Date().toLocaleTimeString('id-ID');
+  logEl.innerHTML += `<div>[${time}] ${text}</div>`;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// Update slider value display
+document.getElementById('speed1').addEventListener('input', function() {
+  document.getElementById('speedValue1').textContent = this.value;
+});
+document.getElementById('speed2').addEventListener('input', function() {
+  document.getElementById('speedValue2').textContent = this.value;
+});
+
+// Start
+connectMQTT();
+</script>
+</body>
+</html>
